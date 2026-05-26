@@ -15,6 +15,9 @@ let recipientAnalyser = null;
 let micSourceNode = null;
 let recipientNode = null; // Destination node to route received audio through analyser
 
+// Web Audio specific to STS streaming
+let scriptProcessor = null;
+
 // DOM Elements
 const elevenlabsKeyInput = document.getElementById("elevenlabsKey");
 const twilioSidInput = document.getElementById("twilioSid");
@@ -366,6 +369,12 @@ async function hangUpCall() {
 function toggleMute() {
   isMuted = !isMuted;
   
+  if (micStream) {
+    micStream.getAudioTracks().forEach(track => {
+      track.enabled = !isMuted;
+    });
+  }
+
   if (isMuted) {
     btnMute.classList.remove("active-mic");
     btnMute.classList.add("muted-mic");
@@ -381,11 +390,30 @@ function toggleMute() {
   }
 }
 
+function floatTo16BitPCM(input) {
+  const output = new Int16Array(input.length);
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return output;
+}
+
+function base64EncodeBuffer(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
 // Web Audio API & Media Capture (Voice Changer)
 async function startMicStream() {
-  // Ensure AudioContext is initialized
+  // Ensure AudioContext is initialized. Use 16000Hz standard for ElevenLabs STS input.
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   }
   if (audioCtx.state === "suspended") {
     await audioCtx.resume();
@@ -404,14 +432,46 @@ async function startMicStream() {
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     
-    // Connect microphone node to analyser (only for visualizer, we don't play it to speaker!)
+    // Connect microphone node to analyser (for visualizer) and script processor for raw PCM extraction
     micSourceNode = audioCtx.createMediaStreamSource(micStream);
     micSourceNode.connect(micAnalyser);
     
     logMessage("Microphone access granted. Starting live voice changer...");
+
+    // Start ElevenLabs STS connection on server
+    const voiceId = voiceSelect.value;
+    const elevenlabsApiKey = elevenlabsKeyInput.value.trim();
+    fetch("/api/sts-start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ voiceId, elevenlabsApiKey })
+    }).catch(console.error);
+
+    // Use ScriptProcessorNode to get raw audio buffer (deprecated but widely supported & simple for this use-case)
+    scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+    scriptProcessor.onaudioprocess = (e) => {
+      if (!isCallActive || isMuted) return;
+
+      const inputData = e.inputBuffer.getChannelData(0); // Float32Array from mic
+      const pcm16Data = floatTo16BitPCM(inputData); // Int16Array
+      const base64Data = base64EncodeBuffer(pcm16Data.buffer);
+
+      if (activeBrowserWs && activeBrowserWs.readyState === 1) {
+        activeBrowserWs.send(JSON.stringify({
+          type: "audio_chunk",
+          payload: base64Data
+        }));
+      }
+    };
+
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0;
+
+    // Connect node chain: Mic -> ScriptProcessor -> GainNode(muted) -> AudioContext Destination
+    micSourceNode.connect(scriptProcessor);
+    scriptProcessor.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
     
-    // Start continuous chunk recording
-    recordAudioChunk();
   } catch (err) {
     console.error(err);
     logMessage("Could not access microphone: " + err.message, "error");
@@ -419,93 +479,18 @@ async function startMicStream() {
 }
 
 function stopMicStream() {
-  if (chunkTimeout) {
-    clearTimeout(chunkTimeout);
-    chunkTimeout = null;
+  if (scriptProcessor) {
+    scriptProcessor.disconnect();
+    scriptProcessor = null;
   }
-  if (mediaRecorder && mediaRecorder.state !== "inactive") {
-    mediaRecorder.stop();
+  if (micSourceNode) {
+    micSourceNode.disconnect();
+    micSourceNode = null;
   }
   if (micStream) {
     micStream.getTracks().forEach(track => track.stop());
     micStream = null;
   }
-}
-
-// Capture and process a 1.5s audio chunk
-function recordAudioChunk() {
-  if (!isCallActive || !micStream) return;
-
-  const chunks = [];
-  
-  // Choose standard supported mimeType
-  let options = { mimeType: "audio/webm;codecs=opus" };
-  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-    options = { mimeType: "audio/webm" };
-  }
-  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-    options = { mimeType: "" }; // default
-  }
-
-  mediaRecorder = new MediaRecorder(micStream, options);
-
-  mediaRecorder.ondataavailable = (e) => {
-    if (e.data && e.data.size > 0) {
-      chunks.push(e.data);
-    }
-  };
-
-  mediaRecorder.onstop = async () => {
-    // Spawn next recording loop instantly to minimize gaps
-    if (isCallActive) {
-      recordAudioChunk();
-    }
-
-    // If muted, discard chunk and don't send to ElevenLabs
-    if (isMuted) {
-      return;
-    }
-
-    const audioBlob = new Blob(chunks, { type: "audio/webm" });
-    
-    if (audioBlob.size < 1000) {
-      // Too small, ignore
-      return;
-    }
-
-    const voiceId = voiceSelect.value;
-    const elevenlabsApiKey = elevenlabsKeyInput.value.trim();
-
-    const formData = new FormData();
-    formData.append("audio", audioBlob, "chunk.webm");
-    formData.append("voiceId", voiceId);
-    if (elevenlabsApiKey) {
-      formData.append("elevenlabsApiKey", elevenlabsApiKey);
-    }
-
-    try {
-      const response = await fetch("/api/speech-to-speech", {
-        method: "POST",
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Speech-to-speech error:", errorText);
-      }
-    } catch (err) {
-      console.error("Failed to upload audio chunk:", err);
-    }
-  };
-
-  mediaRecorder.start();
-
-  // Stop recording chunk after 1.5 seconds, triggering onstop and spawning next loop
-  chunkTimeout = setTimeout(() => {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-      mediaRecorder.stop();
-    }
-  }, 1500);
 }
 
 // U-law to Linear PCM conversion helper
