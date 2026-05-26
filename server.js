@@ -355,6 +355,74 @@ app.post("/api/speech-to-speech", upload.single("audio"), async (req, res) => {
   }
 });
 
+
+// Endpoint to initialize an ElevenLabs STS WebSocket connection
+let elevenLabsWs = null;
+
+app.post("/api/sts-start", (req, res) => {
+  const { voiceId, elevenlabsApiKey } = req.body;
+  const apiKey = elevenlabsApiKey || process.env.ELEVENLABS_API_KEY;
+
+  if (!apiKey) {
+    return res.status(400).json({ error: "ElevenLabs API Key is required." });
+  }
+  if (!voiceId) {
+    return res.status(400).json({ error: "Voice ID is required." });
+  }
+
+  if (elevenlabsApiKey) {
+    updateEnvFile({ ELEVENLABS_API_KEY: elevenlabsApiKey });
+  }
+
+  if (elevenLabsWs) {
+    try { elevenLabsWs.close(); } catch(e) {}
+  }
+
+  // Use 16000Hz PCM for input streaming
+  const wsUrl = `wss://api.elevenlabs.io/v1/speech-to-speech/${voiceId}/stream?output_format=ulaw_8000`;
+  const { WebSocket } = require("ws");
+  elevenLabsWs = new WebSocket(wsUrl, {
+    headers: {
+      "xi-api-key": apiKey
+    }
+  });
+
+  elevenLabsWs.on("open", () => {
+    console.log("[ElevenLabs] WebSocket connected for STS streaming.");
+  });
+
+  elevenLabsWs.on("message", (data) => {
+    try {
+      const response = JSON.parse(data);
+      if (response.audio) {
+        // We received base64 audio back from ElevenLabs (u-law format requested)
+        if (activeTwilioWs && activeStreamSid) {
+          activeTwilioWs.send(JSON.stringify({
+            event: "media",
+            streamSid: activeStreamSid,
+            media: {
+              payload: response.audio
+            }
+          }));
+        }
+      }
+    } catch (err) {
+      console.error("[ElevenLabs] Error parsing STS response:", err.message);
+    }
+  });
+
+  elevenLabsWs.on("error", (err) => {
+    console.error("[ElevenLabs] WebSocket error:", err.message);
+  });
+
+  elevenLabsWs.on("close", () => {
+    console.log("[ElevenLabs] WebSocket disconnected.");
+    elevenLabsWs = null;
+  });
+
+  res.json({ success: true });
+});
+
 // Handle WebSocket connections
 server.on("upgrade", (request, socket, head) => {
   const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
@@ -426,6 +494,23 @@ wss.on("connection", (ws, request) => {
     if (publicUrl) {
       ws.send(JSON.stringify({ type: "tunnel", url: publicUrl }));
     }
+
+    ws.on("message", (message) => {
+      try {
+        // Assume messages are JSON containing audio payload
+        const msg = JSON.parse(message);
+        if (msg.type === "audio_chunk" && elevenLabsWs && elevenLabsWs.readyState === 1) {
+          // Send base64 audio directly to ElevenLabs WebSocket
+          elevenLabsWs.send(JSON.stringify({
+            user_audio_chunk: msg.payload // base64 payload from browser
+          }));
+        }
+      } catch (err) {
+        console.error("[WebSocket] Error processing Browser message:", err.message);
+      }
+    });
+
+
 
     ws.on("close", () => {
       console.log("[WebSocket] Browser connection closed.");

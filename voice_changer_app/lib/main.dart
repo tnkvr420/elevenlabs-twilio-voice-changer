@@ -31,24 +31,24 @@ class VoiceChangerApp extends StatelessWidget {
           error: const Color(0xFFFF1744),
         ),
         cardTheme: CardThemeData(
-          color: const Color(0xFF121629).withOpacity(0.75),
+          color: const Color(0xFF121629).withValues(alpha: 0.75),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
-              color: const Color(0xFF38446B).withOpacity(0.4),
+              color: const Color(0xFF38446B).withValues(alpha: 0.4),
               width: 1,
             ),
           ),
           elevation: 8,
         ),
         inputDecorationTheme: InputDecorationTheme(
-          fillColor: const Color(0xFF0E1224).withOpacity(0.8),
+          fillColor: const Color(0xFF0E1224).withValues(alpha: 0.8),
           filled: true,
           labelStyle: const TextStyle(color: Color(0xFF8C9BB4)),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(
-              color: const Color(0xFF38446B).withOpacity(0.4),
+              color: const Color(0xFF38446B).withValues(alpha: 0.4),
             ),
           ),
           focusedBorder: OutlineInputBorder(
@@ -81,7 +81,7 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
   bool _isMuted = false;
   List<Map<String, dynamic>> _voices = [];
   String? _selectedVoiceId;
-  List<String> _logs = [];
+  final List<String> _logs = [];
 
   // WebSockets and Audio
   WebSocketChannel? _wsChannel;
@@ -554,7 +554,7 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
                             color: _getStatusColor(),
                             boxShadow: [
                               BoxShadow(
-                                color: _getStatusColor().withOpacity(0.5),
+                                color: _getStatusColor().withValues(alpha: 0.5),
                                 blurRadius: 8,
                                 spreadRadius: 2,
                               )
@@ -631,6 +631,7 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
+                      // ignore: deprecated_member_use
                       value: _selectedVoiceId,
                       decoration: const InputDecoration(
                         labelText: 'Target Voice (ElevenLabs)',
@@ -692,7 +693,7 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
                 const SizedBox(width: 8),
                 Container(
                   decoration: BoxDecoration(
-                    color: _isMuted ? Colors.redAccent.withOpacity(0.2) : Colors.greenAccent.withOpacity(0.1),
+                    color: _isMuted ? Colors.redAccent.withValues(alpha: 0.2) : Colors.greenAccent.withValues(alpha: 0.1),
                     border: Border.all(
                       color: _isMuted ? Colors.redAccent : Colors.greenAccent,
                       width: 1,
@@ -741,9 +742,9 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
                     Container(
                       height: 150,
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.9),
+                        color: Colors.black.withValues(alpha: 0.9),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFF38446B).withOpacity(0.4)),
+                        border: Border.all(color: const Color(0xFF38446B).withValues(alpha: 0.4)),
                       ),
                       child: ListView.builder(
                         padding: const EdgeInsets.all(8.0),
