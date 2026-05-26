@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Voice Changer Call Panel</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <div class="background-glows">
+    <div class="glow glow-1"></div>
+    <div class="glow glow-2"></div>
+  </div>
+
+  <div class="container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="title-container">
+        <h1>ElevenLabs <span>&times;</span> Twilio</h1>
+        <h2>Live Voice Changer Outbound Call</h2>
+      </div>
+      <div class="status-badge" id="appStatus">
+        <span class="indicator"></span>
+        <span class="label">IDLE</span>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="app-grid">
+      <!-- Left Column: Settings -->
+      <section class="card config-card">
+        <h3>Configuration</h3>
+        
+        <!-- Credentials -->
+        <div class="form-section">
+          <h4>API Settings (Optional if set in .env)</h4>
+          <div class="form-group">
+            <label for="elevenlabsKey">ElevenLabs API Key</label>
+            <input type="password" id="elevenlabsKey" placeholder="Enter ElevenLabs API Key">
+          </div>
+          <div class="form-group">
+            <label for="twilioSid">Twilio Account SID</label>
+            <input type="text" id="twilioSid" placeholder="Enter Account SID">
+          </div>
+          <div class="form-group">
+            <label for="twilioToken">Twilio Auth Token</label>
+            <input type="password" id="twilioToken" placeholder="Enter Auth Token">
+          </div>
+        </div>
+
+        <hr class="divider">
+
+        <!-- Call Configuration -->
+        <div class="form-section">
+          <h4>Call details</h4>
+          <div class="form-group">
+            <label for="fromNumber">From Number (Twilio E.164)</label>
+            <input type="text" id="fromNumber" value="+18669423712" placeholder="+1xxxxxxxxxx">
+          </div>
+          <div class="form-group">
+            <label for="toNumber">To Number (Recipient E.164)</label>
+            <input type="text" id="toNumber" placeholder="+1xxxxxxxxxx">
+          </div>
+          <div class="form-group">
+            <label for="voiceSelect">Target Voice Changer (ElevenLabs)</label>
+            <div class="select-wrapper">
+              <select id="voiceSelect">
+                <option value="" disabled selected>Loading voices...</option>
+              </select>
+              <button class="btn btn-secondary" id="btnRefreshVoices" title="Refresh Voice List">
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Control & Visualizer -->
+      <div class="control-column">
+        <!-- Control Card -->
+        <section class="card control-card">
+          <div class="tunnel-info" id="tunnelPanel">
+            <span class="tunnel-label">Secure Tunnel URL:</span>
+            <span class="tunnel-url" id="tunnelUrl">Connecting...</span>
+          </div>
+
+          <div class="controls-action">
+            <button class="btn btn-primary" id="btnCall">
+              <span class="icon">📞</span> Start Outbound Call
+            </button>
+            <button class="btn btn-danger" id="btnHangUp" disabled>
+              <span class="icon">📴</span> Hang Up
+            </button>
+            <button class="btn btn-secondary" id="btnMute" disabled>
+              <span class="icon" id="muteIcon">🎙️</span> <span>Mic Active</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Visualizer Card -->
+        <section class="card visualizer-card">
+          <h3>Real-time Audio Streams</h3>
+          <div class="visualizer-container">
+            <canvas id="visualizerCanvas"></canvas>
+            <div class="visualizer-labels">
+              <span class="legend mic-legend"><span class="dot"></span> Your Voice (Mic)</span>
+              <span class="legend recipient-legend"><span class="dot"></span> Called Party (Twilio)</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Logs Card -->
+        <section class="card logs-card">
+          <div class="card-header-actions">
+            <h3>Terminal Log</h3>
+            <button class="btn-clear" id="btnClearLogs">Clear</button>
+          </div>
+          <div class="logs-console" id="logsConsole">
+            <div class="log-line system">[System] Application loaded. Ready to configure call parameters.</div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="index.js"></script>
+</body>
+</html>

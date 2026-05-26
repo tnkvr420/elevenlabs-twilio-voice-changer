@@ -1,0 +1,4 @@
+node_modules/
+.env
+screenshot.png
+.system_generated/
